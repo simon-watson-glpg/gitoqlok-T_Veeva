@@ -1,0 +1,50 @@
+///$tab t_user_veeva
+temp_user_veeva:
+Load
+    country_cd
+    ,created_date
+    ,user_id
+    ,last_modified_date
+    ,manager_id
+    ,user_name
+    ,first_name
+//     ,territory_id
+    ,product_expertise
+    ,is_active
+    ,user_type
+    ,profile_name
+FROM 
+	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
+;
+
+// map_user_mgmt_id_primary_territory:
+// Mapping
+// LOAD	
+//     user_id
+//     ,territory_name
+// FROM 
+// 	[$(vQVD_Extract_Path)/e_v_user1.qvd](qvd)
+// ;
+
+t_user_veeva:
+Hierarchy(user_id,manager_id,user_level_)
+Load
+	*
+	,ApplyMap('map_user_id_territory_name',user_id,Null()) as user_territory //was usermgmtid 20200406
+;
+Load
+	*
+    ,user_name as user_level_
+    ,Left(user_id,Len(user_id)-3) as user_mgmt_id
+    ,If(WildMatch(profile_name,'*MSL*'),1) as is_msl
+    ,If(WildMatch(profile_name,'*Rep*'),1) as is_rep
+Resident
+	temp_user_veeva
+Where 
+	WildMatch(profile_name,'VSPA*')
+    and user_type = 'Standard'
+;
+
+Drop Table temp_user_veeva;
+
+Drop Field [user_level_];

@@ -1,0 +1,85 @@
+///$tab t_working_days
+/***
+	generate all days as from the first user creation date for active users
+***/
+
+temp_min_created_date:
+Load
+	Min(created_date) as min_created_date
+FROM 
+	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
+Where
+	is_active = 'True'
+;
+
+Let vMin_Created_dDate = Peek('min_created_date');
+
+Drop table temp_min_created_date;
+
+temp_working_days:
+LOAD
+	Date($(vMin_Created_dDate) + IterNo() - 1) as temp_date
+AutoGenerate 1 
+While 
+	$(vMin_Created_dDate) + IterNo() -1 <= Today()
+;
+
+/***
+	match days between user creation date and today for active users
+***/
+
+temp_working_days_users:
+IntervalMatch(temp_date)
+load
+	created_date
+    ,today()
+FROM 
+	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
+Where
+	is_active = 'True'
+;
+
+Drop Table temp_working_days;
+
+Left Join(temp_working_days_users)
+load
+	Distinct
+    user_id
+    ,Left(user_id,Len(user_id)-3) as user_mgmt_id
+	,created_date
+    ,today()
+FROM 
+	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
+Where 
+	is_active = 'True'
+    and Not Match(Upper(first_name),'DUMMY','VEEVA','AUTOMATED')
+    and user_type = 'Standard'
+    and WildMatch(Upper(profile_name),'*VSPA_REP*','*VSPA_MSL*')				//working days should not only be generated for REP and MSL profiles.
+;
+
+// map_user_mgmt_id_user_territory:
+// Mapping
+// LOAD	
+// 	user_id
+//     ,territory_name
+// FROM 
+// 	[$(vQVD_Extract_Path)/e_v_user1.qvd](qvd)
+// ;
+
+t_working_days:
+NoConcatenate
+Load 
+	*
+    ,ApplyMap('map_territory_id_country_id',territory_id,Null()) as country_id
+;
+Load
+	user_id
+    ,Date(Floor(temp_date)) as working_day
+    ,ApplyMap('map_user_id_territory_name',user_id,Null()) as territory_id
+Resident
+	temp_working_days_users
+Where
+	WeekDay(temp_date) < 5
+;
+
+Drop Table temp_working_days_users;

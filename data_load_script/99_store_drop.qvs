@@ -1,0 +1,14 @@
+///$tab 99_store_drop
+Let vNoOfTables = NoOfTables();
+Let i = $(vNoOfTables);
+
+Do while i > 0
+
+  Let i = $(i)  - 1 ;
+  Let vTableName = TableName($(i));        
+  Store $(vTableName) into $(vQVD_Transform_Path)\$(vTableName).qvd(qvd);
+  Drop table $(vTableName); 
+
+Trace Stored & Dropped Table $(vTableName);
+
+Loop;

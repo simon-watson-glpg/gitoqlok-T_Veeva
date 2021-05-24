@@ -1,0 +1,70 @@
+///$tab t_account_territory_veeva
+//define lowest level in the hierarchy per level_2 (country) to link territories to an account, beacause accounts have matches on every level in the hierarchy. The lowest levels differs between countries
+
+map_territory_level_2_depth:
+Mapping
+Load
+	territory_level_2
+	,If(Count(territory_level_6)>0,6,
+    	If(Count(territory_level_5)>0,5,
+        	If(Count(territory_level_4)>0,4,
+            	If(Count(territory_level_3)>0,3,
+                	If(Count(territory_level_2)>0,2))))) as territory_level_2_depth
+Resident
+	t_territory_veeva
+Group By
+	territory_level_2
+;
+
+map_territory_level_2_lowest_territory_ids:
+NoConcatenate
+LOAD
+	Pick(Match(territory_level_2_depth,6,5,4,3,2),territory_level_6,territory_level_5,territory_level_4,territory_level_3,territory_level_2) as territory_level_2_lowest_level_territory_id
+;
+LOAD
+	territory_id
+	,ApplyMap('map_territory_level_2_depth',territory_level_2,Null()) as territory_level_2_depth
+    ,territory_level_2
+    ,territory_level_3
+    ,territory_level_4
+    ,territory_level_5
+    ,territory_level_6
+Resident
+	t_territory_veeva
+;
+
+t_account_territory_veeva:
+NoConcatenate
+LOAD 
+    account_id,
+    user_or_group_id as group_id
+FROM 
+	[$(vQVD_Extract_Path)/e_v_account_share.qvd](qvd)
+Where
+	WildMatch(Upper(rowcause),'Territory2AssociationManual')
+//    and Upper(is_deleted) = 'FALSE'
+// field within rowcause updated from 'TerritoryManual'   to 'Territory2AssociationManual'
+;
+
+Inner Join(t_account_territory_veeva)
+LOAD
+    group_id,
+    left(developer_name,len(developer_name)-1) as account_territory
+FROM 
+	[$(vQVD_Extract_Path)/e_v_group.qvd](qvd)
+Where
+	group_type = 'Territory'
+//	and Exists(territory_level_2_lowest_level_territory_id, developer_name) 
+;
+
+/*********************
+Simon Watson - 2021-05-18
+It seems that there is a suffix of 1 added to the developer name field, which is causing all territory level associations to break
+
+
+*////////////////////
+
+
+
+
+Drop Table map_territory_level_2_lowest_territory_ids;

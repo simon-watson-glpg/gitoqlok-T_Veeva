@@ -1,0 +1,57 @@
+///$tab t_user_mgmt_veeva
+t_user_mgmt_veeva:
+LOAD
+   user_territory_id
+   ,is_active
+   ,last_modified_by_id
+   ,last_modified_date
+   ,systemmodstamp
+   ,territory_id
+   ,user_id
+FROM 
+//	[$(vQVD_Extract_Path)/e_v_user_territory.qvd](qvd)
+[lib://Customer View/1.QVD/5.Migration/e_v_user2territoryassociation.qvd](qvd)    
+;
+
+tmp_map_user_id_territory_id:
+NoConcatenate
+Load
+	user_id
+    ,territory_id
+FROM 
+//	[$(vQVD_Extract_Path)/e_v_user_territory.qvd](qvd)
+[lib://Customer View/1.QVD/5.Migration/e_v_user2territoryassociation.qvd](qvd)    
+// Where
+// 	is_active = 'True'
+;
+
+Left Join(tmp_map_user_id_territory_id)
+/* Updated due to missing ES_CR_RA_404 */
+// LOAD
+//     territory_id
+//     ,territory_name
+// FROM 
+// 	[$(vQVD_Extract_Path)/e_v_territory.qvd](qvd)
+// ;
+
+
+LOAD
+    Id as territory_id
+    ,Name as territory_name
+FROM [lib://Customer View/1.QVD/5.Migration/e_v_territory.qvd]
+(qvd);
+;
+
+
+
+
+map_user_id_territory_name:
+Mapping
+Load
+	user_id
+    ,territory_name
+Resident 
+	tmp_map_user_id_territory_id
+;
+
+Drop Table tmp_map_user_id_territory_id;

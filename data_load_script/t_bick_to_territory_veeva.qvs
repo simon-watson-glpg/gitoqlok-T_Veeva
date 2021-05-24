@@ -1,0 +1,14 @@
+///$tab t_bick_to_territory_veeva
+t_brick_to_territory_veeva:
+LOAD
+	*
+Where
+	WildMatch(territory,'*C*')
+;
+LOAD
+    name as brick_cd
+    ,SubField(Trim(territory),';') as territory
+    ,country_cd
+FROM 
+	[$(vQVD_Extract_Path)/e_v_brick_to_territory.qvd](qvd)
+;

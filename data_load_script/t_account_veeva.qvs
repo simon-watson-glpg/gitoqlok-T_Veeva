@@ -1,0 +1,238 @@
+///$tab t_account_veeva
+temp_account_veeva:
+LOAD
+    created_date as created_date
+    ,account_formatted_name
+    ,group_specialty_1
+    ,group_specialty_2
+    ,hco_established_date_nwk as hco_established_date_nwk
+    ,hco_established_date_qs as hco_established_date_qs
+    ,hco_focus_area_1_nwk
+    ,hco_focus_area_2_nwk
+    ,hco_status_nwk
+    ,hco_type_nwk
+    ,hco_focus_area_1_qs
+    ,hco_focus_area_2_qs
+    ,hcp_status_nwk
+    ,hcp_type_nwk
+    ,hcp_focus_area_1_nwk
+    ,hcp_focus_area_1_qs
+    ,hcp_focus_area_2_nwk
+    ,hcp_focus_area_2_qs
+    ,hcp_type_qs
+//     ,hospital_type
+    ,inami_id
+    ,account_id
+    ,is_deleted
+    ,last_modified_date as last_modified_date
+    ,If(last_modified_date> AddMonths(Today(),-6),'Yes','No') as is_veeva_updated   
+    ,is_market_access_nwk
+    ,is_market_access_qs
+    ,owner_id
+    ,account_primary_parent_id
+    ,specialty_1_nwk
+    ,specialty_1_formula
+//     ,specialty_1
+    ,specialty_2_nwk
+    ,specialty_2_formula
+//     ,specialty_2
+    ,specialty_3_nwk
+    ,specilaty_qs_id
+    ,account_target
+    ,veeva_nwk_id
+    ,recordtype_id
+    ,glpg_ind_status_cd
+    ,qidc__onekeyid_ims as onekey_id
+    ,primary_address_qs&', '&Capitalize(primary_city_qs)&', '&primary_zip_postal_code_qs as account_address
+    ,Capitalize(primary_city_qs) as account_city
+    ,primary_zip_postal_code_qs as account_postal_code
+    ,primary_address_qs as account_street
+    ,primary_country_qs as primary_country
+FROM 
+	[$(vQVD_Extract_Path)/e_v_account.qvd](qvd)
+;
+
+map_recordtype_account_type:
+Mapping
+LOAD
+    recordtype_id
+    ,Subfield(recordtype_name,'_vod',1)
+FROM 
+	[$(vQVD_Extract_Path)/e_v_recordtype.qvd](qvd)
+Where
+	object_type = 'Account'
+;
+
+map_recordtype_is_persontype:
+Mapping
+LOAD
+    recordtype_id
+    ,is_person_type
+FROM 
+	[$(vQVD_Extract_Path)/e_v_recordtype.qvd](qvd)
+Where
+	object_type = 'Account'
+;
+
+//add exception for BNL, segemnts are based on product GLPG instead of Filgo like all other countries
+
+tmp_map_account_id_territory_level_2_bnl:
+NoConcatenate
+LOAD
+    account_id as acocunt_id_bnl
+    ,account_territory as territory_name
+FROM 
+	[$(vQVD_Transform_Path)/t_account_territory_veeva.qvd](qvd)
+    ;
+    
+Inner Join(tmp_map_account_id_territory_level_2_bnl)
+LOAD
+    territory_level_2
+    ,territory_name
+FROM 
+	[$(vQVD_Transform_Path)/t_territory_veeva.qvd](qvd)
+Where
+	territory_level_2 = 'BNL'
+;
+
+map_account_id_territory_level_2_bnl:
+Mapping
+Load
+	acocunt_id_bnl
+    ,1
+Resident
+	tmp_map_account_id_territory_level_2_bnl
+;
+
+Drop Table tmp_map_account_id_territory_level_2_bnl;
+
+
+
+// Jyseleca FR is now used across the board = no difference for BNL anymore - waiting on confirmation for update go ahead
+// Additionally a product ID, so we can show indication
+
+map_account_id_segment_bnl:
+Mapping
+Load
+	account_id
+    ,segment
+    // concatenate product name & segment
+FROM 
+	[$(vQVD_Extract_Path)/e_v_product_metrics.qvd](qvd)
+Where
+//	products_id = 'a004J000001epf6QAA'		//Product: GLPG
+    products_id = 'a004J000007hIgUQAU'		//Product: Jyseleca_RA
+//  match(products_id,'a004J000007hIgUQAU','a004J000008mcbpQAA') //Inclusion of Company
+
+// NL currently has UC tiers against "Company" need to add field for product to account table --- Check with Boris on timeline + UC
+
+;
+
+map_account_id_segment:
+Mapping
+Load
+	account_id
+    ,segment
+FROM 
+	[$(vQVD_Extract_Path)/e_v_product_metrics.qvd](qvd)
+Where
+    products_id = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
+    //products_id ='a004J000007gAUKQA2'		//Product: Filgo
+;
+
+
+/************* 
+KOL Tier is missing from the AWS table - the temp API pulls the additional data and will need updating to the standard tables, once the missing fields are added 
+**************/
+
+        map_account_id_kol_tier_bnl:
+        Mapping
+        LOAD
+            Account_vod__c,
+            GLPG_KOL_Tiering__c
+        FROM 
+            [lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
+        Where
+            Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
+			// Products_vod__c = 'a004J000001epf6QAA'		//Product: GLPG
+        ;
+
+        map_account_id_kol_tier:
+        Mapping
+        LOAD
+            Account_vod__c,
+            GLPG_KOL_Tiering__c
+        FROM 
+            [lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
+        Where
+            Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
+        ;
+
+/*
+CODE UPDATE
+Need to split out Opt in Pending from Opt Ins, and add as status
+Simon Watson - 2021-04-27
+*/
+
+tmp_multichannel_consent:
+NoConcatenate
+Load 
+	*
+    ,If(WildMatch(opt_type,'Opt_In_vod') and Len(opt_expiration_date)=0,'Opt-In',
+    	If(WildMatch(opt_type,'Opt_In_Pending_vod') ,'Pending','Opt-Out')) as hcp_consent_status
+FROM 
+	[$(vQVD_Extract_Path)/e_v_multichannel_consent.qvd](qvd)
+Where
+	Upper(is_deleted) ='FALSE' 
+;
+
+tmp_2_multichannel_consent:
+NoConcatenate
+Load 
+	account_id
+    ,lastvalue(hcp_consent_status) as hcp_consent_status
+Resident
+	tmp_multichannel_consent
+Group By
+	account_id
+;
+
+map_account_id_consent:
+Mapping
+Load
+	account_id
+    ,hcp_consent_status
+Resident
+	tmp_2_multichannel_consent
+;
+
+Drop Table tmp_multichannel_consent, tmp_2_multichannel_consent;
+
+
+/******************************************************************************
+CODE UPDATE 
+2021.01.20 - Simon Watson
+1. Updated 'N/A' to 'None' as n/a could mislead end user   
+2. Additional applymap for KOL Tier from Product Metrics table
+******************************************************************************/
+
+t_account_veeva:
+NoConcatenate
+Load
+	*
+    ,ApplyMap('map_account_id_consent',account_id,'N/A') as hcp_consent_status
+    ,ApplyMap('map_recordtype_account_type',recordtype_id,null()) as account_type
+	,If(Applymap('map_account_id_territory_level_2_bnl',account_id) = 1,
+    	If(Match(ApplyMap('map_account_id_segment_bnl',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment_bnl',account_id,Null()),'None'),
+        If(Match(ApplyMap('map_account_id_segment',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment',account_id,Null()),'None')) as account_segment        
+	,If(Applymap('map_account_id_territory_level_2_bnl',account_id) = 1,
+    	If(Match(ApplyMap('map_account_id_kol_tier_bnl',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier_bnl',account_id,Null()),'None'),
+        If(Match(ApplyMap('map_account_id_kol_tier',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier',account_id,Null()),'None')) as account_tier_kol        
+    ,If(ApplyMap('map_recordtype_is_persontype',recordtype_id,Null())='False','HCO','HCP') as hcp_hco
+    ,If(ApplyMap('map_recordtype_is_persontype',recordtype_id,Null())='True',account_formatted_name) as hcp_account
+    ,If(ApplyMap('map_recordtype_is_persontype',recordtype_id,Null())='False',account_formatted_name) as hco_account
+Resident
+	temp_account_veeva
+;
+
+Drop Table temp_account_veeva;

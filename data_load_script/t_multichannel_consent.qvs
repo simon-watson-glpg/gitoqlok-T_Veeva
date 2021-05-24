@@ -1,0 +1,160 @@
+///$tab t_multichannel_consent
+map_territory_id_country_id:
+Mapping
+LOAD
+    territory
+    ,country_cd
+FROM 
+	[$(vQVD_Transform_Path)/t_brick_to_territory_veeva.qvd](qvd)
+;
+
+NoConcatenate
+t_user_mgmt_veeva_temp:
+LOAD
+   user_territory_id
+   ,is_active
+   ,last_modified_by_id
+   ,last_modified_date
+   ,systemmodstamp
+   ,territory_id
+   ,user_id
+FROM 
+//	[$(vQVD_Extract_Path)/e_v_user_territory.qvd](qvd)
+[lib://Customer View/1.QVD/5.Migration/e_v_user2territoryassociation.qvd](qvd)
+;
+
+Left Join(t_user_mgmt_veeva_temp)
+/* Updated due to missing ES_CR_RA_404 */
+// LOAD
+//     territory_id
+//     ,territory_name
+// FROM 
+// 	[$(vQVD_Extract_Path)/e_v_territory.qvd](qvd)
+// ;
+
+LOAD
+    Id as territory_id
+    ,Name as territory_name
+FROM [lib://Customer View/1.QVD/5.Migration/e_v_territory.qvd]
+(qvd);
+;
+
+Left Join(t_user_mgmt_veeva_temp)
+load
+	Distinct
+    user_id
+    ,profile_name
+FROM 
+	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
+Where 
+	is_active = 'True'
+    and Not Match(Upper(first_name),'DUMMY','VEEVA','AUTOMATED')
+    and user_type = 'Standard'
+    and WildMatch(Upper(profile_name),'*VSPA_REP*')				
+;
+
+map_user_id_territory_name:
+Mapping
+Load
+    territory_name,
+	user_id
+Resident 
+	t_user_mgmt_veeva_temp
+where len(profile_name)>0
+;
+
+Drop Table t_user_mgmt_veeva_temp;
+
+Account_allocation:
+Load
+    account_id
+    ,account_territory
+    ,ApplyMap('map_user_id_territory_name',account_territory,null()) as user_id
+    ,ApplyMap('map_territory_id_country_id',account_territory,Null()) as country_id
+FROM 
+	[$(vQVD_Transform_Path)/t_account_territory_veeva.qvd](qvd)
+where len(ApplyMap('map_user_id_territory_name',account_territory,null()))>0
+;
+
+/* 
+Update to direct api, to ingest additional fields - 2021-04-01 
+*/
+
+t_multichannel_consent:
+LOAD
+    Account_vod__c as account_id,                              // Need to update when change to DWH
+    Name as consent_id,
+//    multichannel_consent_name as consent_id,                   // Need to update when change to DWH
+//         Date(Floor(capture_dt)) as capture_dt,					// Need to update when change to DWH
+        Date(Floor(Capture_Datetime_vod__c)) as capture_dt,        
+//     If(Upper(opt_type)='OPT_IN_VOD','Opt-In',
+//     	If(Upper(opt_type)='OPT_OUT_VOD','Opt-Out',
+//         If(Upper(opt_type)='OPT_IN_PENDING_VOD','Pending')
+//         )) as opt_type,
+    If(Upper(Opt_Type_vod__c)='OPT_IN_VOD','Opt-In',
+    	If(Upper(Opt_Type_vod__c)='OPT_OUT_VOD','Opt-Out',
+        If(Upper(Opt_Type_vod__c)='OPT_IN_PENDING_VOD','Pending')
+        )) as opt_type,        
+//     captured_by,
+//     channel_source,
+//     channel_value,
+//     consent_confirm_dt,
+	Consent_Line_vod__c as      consent_line,
+//     consent_line,
+//     consent_type,
+//     content_type,
+//     created_by_id,
+//     created_date,
+//     currency_iso_cd,
+//     default_consent_text,
+//     detail_group,
+//     disclaimer_text,
+//     external_id,
+//     multichannel_consent_id,
+IsDeleted as is_deleted,
+//    	is_deleted,
+//     is_locked,
+//     last_modified_by_id,
+//     last_modified_date,
+//     last_referenced_date,
+//     last_viewed_date,
+//     last_device,
+//     may_edit,
+//     mobile_id,
+     Name as multichannel_consent_name,
+     Opt_Expiration_Date_vod__c as opt_expiration_date,
+//     opt_out_disclaimer_text,
+//     optout_event_type,
+//     product,
+//     receipt_email,
+//     receipt_sent_email_transaction_id,
+//     receipt_sent_email,
+//     recordtype_id,
+//     related_transaction_id,
+//     sample_consent_template_data,
+//     sent_email,
+//     signature_dt,
+//     signature_id,
+//     signature,
+//     sub_channel_key,
+//     systemmodstamp,
+//     union_id,
+//     user_last_notified
+	Channel_Source_vod__c,
+	GLPG_Consent_Source__c,
+	CDP_Consent_ID__c
+FROM 
+//	[$(vQVD_Extract_Path)/e_v_multichannel_consent.qvd](qvd)
+    [lib://Customer View/1.QVD/5.Migration/e_v_multichannel_consent_addition.qvd](qvd)
+;
+
+
+left join
+Load
+	account_id,
+    account_territory,
+    country_id
+Resident
+Account_allocation;
+
+drop table Account_allocation;
