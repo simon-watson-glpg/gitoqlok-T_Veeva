@@ -13,7 +13,8 @@ LOAD
 //FROM 	[$(vQVD_Transform_Path)/t_account_veeva.qvd](qvd)
 Resident t_account_veeva
 Where
-	account_tier_kol <> 'None'
+	KOL_target_indication <> 'None'
+    //account_tier_kol <> 'None' - UPDATED TO kol_target_indication to enable multiple indications not just RA
 ;
 
 map_msl_account_id_account_territory:
@@ -38,10 +39,12 @@ FROM
 Inner Join(tmp_targeted_rep_accounts)
 LOAD
     account_id
+    ,Segment_target_indication
 //FROM [$(vQVD_Transform_Path)/t_account_veeva.qvd](qvd)
 Resident t_account_veeva
 Where
-	account_segment <> 'None'
+	Segment_target_indication <> 'None'
+//account_segment <> 'None' - UPDATED FOR INDICATION SPLIT
 ;
 
 map_rep_account_id_account_territory:
@@ -53,7 +56,20 @@ Resident
 	tmp_targeted_rep_accounts
 ;
 
+
+map_rep_account_id_account_territory_indication:
+Mapping
+Load
+	account_id&'|'&account_territory
+    ,Segment_target_indication
+Resident
+	tmp_targeted_rep_accounts
+;
+
+
 Drop Table tmp_targeted_rep_accounts;
+
+
 
 map_user_id_country:
 mapping Load
@@ -99,6 +115,7 @@ t_event_attendees_veeva:
 LOAD
 	*
     ,If(ApplyMap('map_rep_account_id_account_territory',account_id&'|'&ApplyMap('map_user_id_territory_name',owner_id,Null()),Null())=1,1) as is_targeted
+	,ApplyMap('map_rep_account_id_account_territory_indication',account_id&'|'&ApplyMap('map_user_id_territory_name',owner_id,Null()),Null()) as target_indication    
     ,ApplyMap('map_user_id_territory_name',owner_id,Null()) as Territory
     ,ApplyMap('map_user_id_country',owner_id,Null()) as Country
     ;

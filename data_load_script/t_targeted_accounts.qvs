@@ -20,11 +20,14 @@ Inner Join(tmp_targeted_msl_accounts)
 LOAD
     account_id
     ,account_tier_kol
+    ,account_tier_kol_RA
+    ,account_tier_kol_UC
     ,1 as is_targeted_msl
 //FROM 	[$(vQVD_Transform_Path)/t_account_veeva.qvd](qvd)
 Resident t_account_veeva
 Where
-	account_tier_kol <> 'None'
+	KOL_target_indication <> 'None'
+    //account_tier_kol <> 'None' - UPDATED TO kol_target_indication to enable multiple indications not just RA
 	and glpg_ind_status_cd = '3'
 ;
 
@@ -43,11 +46,15 @@ Inner Join(tmp_targeted_rep_accounts)
 LOAD
     account_id
     ,account_segment
+    ,account_segment_RA
+    ,account_segment_UC
     ,1 as is_targeted
+    ,Segment_target_indication as target_indication
 //FROM 	[$(vQVD_Transform_Path)/t_account_veeva.qvd](qvd)
 Resident t_account_veeva
 Where
-	account_segment <> 'None'
+	Segment_target_indication <> 'None'
+	//account_segment <> 'None'- UPDATED TO Segment_target_indication to enable multiple indications not just RA
     and glpg_ind_status_cd = '3'
 ;
 

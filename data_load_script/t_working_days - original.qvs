@@ -1,4 +1,4 @@
-///$tab t_working_days
+///$tab t_working_days - original
 /***
 	generate all days as from the first user creation date for active users
 ***/
@@ -41,43 +41,6 @@ Where
 
 Drop Table temp_working_days;
 
-
-
-temp_working_days_users_UK_FIX:
-Load
-Distinct
-    user_id
-    ,created_date
-FROM 
-	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
-Where 
-	is_active = 'True'
-    and Not Match(Upper(first_name),'DUMMY','VEEVA','AUTOMATED')
-    and user_type = 'Standard'
-    and WildMatch(Upper(profile_name),'*VSPA_REP*','*VSPA_MSL*')				//working days should not only be generated for REP and MSL profiles.
-	and not wildmatch(user_id,'0054J0000062KsUQAU','0054J0000062KsNQAU','0054J0000062KsSQAU','0054J0000062KrxQAE','0054J0000062KrtQAE','0054J0000062KruQAE','0054J0000062KsVQAU','0054J0000062KsCQAU','0054J0000062KsHQAU','0054J0000062KsTQAU','0054J0000062Ks0QAE','0054J0000062Ks9QAE','0054J0000062KsIQAU','0054J0000062KtFQAU')
-;
-
-Concatenate (temp_working_days_users_UK_FIX)
-Load * Inline [
-user_id, 			created_date
-'0054J0000062KsUQAU',	2020-12-21 11:24:21.000000
-'0054J0000062KsNQAU',	2020-12-21 11:24:21.000000
-'0054J0000062KsSQAU', 2020-12-21 11:24:21.000000
-'0054J0000062KrxQAE', 2020-12-21 11:24:21.000000
-'0054J0000062KrtQAE', 2020-12-21 11:24:21.000000
-'0054J0000062KruQAE', 2020-12-21 11:24:21.000000
-'0054J0000062KsVQAU', 2020-12-21 11:24:21.000000
-'0054J0000062KsCQAU', 2020-12-21 11:24:21.000000
-'0054J0000062KsHQAU', 2020-12-21 11:24:21.000000
-'0054J0000062KsTQAU', 2020-12-21 11:24:21.000000
-'0054J0000062Ks0QAE', 2020-12-21 11:24:21.000000
-'0054J0000062Ks9QAE', 2020-12-21 11:24:21.000000
-'0054J0000062KsIQAU', 2020-12-21 11:24:21.000000
-'0054J0000062KtFQAU', 2020-12-21 11:24:21.000000
-];
-
-
 Left Join(temp_working_days_users)
 load
 	Distinct
@@ -85,9 +48,14 @@ load
     ,Left(user_id,Len(user_id)-3) as user_mgmt_id
 	,created_date
     ,today()
-Resident   temp_working_days_users_UK_FIX;
-drop Table temp_working_days_users_UK_FIX;
-
+FROM 
+	[$(vQVD_Extract_Path)/e_v_user.qvd](qvd)
+Where 
+	is_active = 'True'
+    and Not Match(Upper(first_name),'DUMMY','VEEVA','AUTOMATED')
+    and user_type = 'Standard'
+    and WildMatch(Upper(profile_name),'*VSPA_REP*','*VSPA_MSL*')				//working days should not only be generated for REP and MSL profiles.
+;
 
 // map_user_mgmt_id_user_territory:
 // Mapping

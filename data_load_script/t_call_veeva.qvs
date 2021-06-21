@@ -1,13 +1,4 @@
 ///$tab t_call_veeva
-/* 
-Addition of indication of call activity
-Logic is based on the following rules:
-1. Defined product in call product 
-2. If no call product, then medical discussion for MSL
-3. Where no product is specified, call is allocated based on Specialty 1 - 3
-*/
-
-
 /*************************
 CODE ADDITION
 2021-02-15 - Simon Watson
@@ -59,6 +50,39 @@ FROM [lib://Customer View/1.QVD/2.Transform/t_account_veeva.qvd]
 (qvd);
 
 
+/* CODE UPDATE
+Simon Watson - 2021/05/24
+Added call record type into Call table with mapping table from recordtype
+*/
+
+map_recordtype_call_type:
+Mapping
+LOAD
+	recordtype_id
+    ,recordtype_name
+//    ,object_type
+FROM 
+	[$(vQVD_Extract_Path)/e_v_recordtype.qvd](qvd)
+where object_type = 'Call2_vod__c'
+;
+
+
+map_account_KOL_indication:
+Mapping
+LOAD
+	account_id,
+    KOL_target_indication
+Resident
+t_account_veeva;
+
+map_account_segment_indication:
+Mapping
+LOAD
+	account_id,
+    Segment_target_indication
+Resident
+t_account_veeva;
+
  
  /*************************************/
 
@@ -66,6 +90,7 @@ temp_call_veeva:
 LOAD
     account_id
     ,address
+    ,applymap('map_recordtype_call_type',recordtype_id,null()) as call_record_type
     ,Replace(Subfield(attendee_type,'_vod',1),'_',' ') as attendee_type
     ,is_clm
     ,call_comments
@@ -104,10 +129,45 @@ LOAD
 //     ,Left(owner_id,Len(owner_id)-3) as user_mgmt_id
     ,next_call_notes
     ,applymap('map_medical_discussion',call_id,null()) as medical_discussion // New addition for indication allocation
-    ,if(wildmatch(call_detailed_products,'*Jyseleca(RA)*'),'RA',
+    ,applymap('map_account_KOL_indication',account_id,null()) as KOL_target_indication
+
+/**********************
+Medical indication split based on:
+1. The account is within target list for RA/UC
+2. The indication is listed in call details (including medical dicussion)
+***********************/
+
+    ,if(applymap('map_account_KOL_indication',account_id,null()) = 'RA','RA',
+    if(wildmatch(call_detailed_products,'*Jyseleca(RA)*'),'RA',
     	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'RA*','Medical_Rheumatology'),'RA',
-		   	if(wildmatch(call_detailed_products,'*Jyseleca(UC)*'),'UC',
-   				'Other'))) as call_indication,
+	if(applymap('map_account_KOL_indication',account_id,null()) = 'UC','UC',
+        if(wildmatch(call_detailed_products,'*Jyseleca(UC)*'),'UC',
+        	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'UC*'),'UC',
+   				'Other')))))) as call_indication_MSL,
+
+/**********************
+Commercial Indication split based on:
+1. The user id of the call - to take into account Elwin and Didier in Belgium - as per discussion with NBS June 2021
+2. The account is within target list for RA/UC
+3. The indication is listed in call details 
+***********************/
+
+    IF(owner_id = '0054J0000062oPU','UC', IF(owner_id = '0054J0000062oNx','UC',  // if calls created by either in BE didier or elwin -> UC
+    // Put in place the same categorisation for BE RA, BC11 to BC14. So in BE there will be no Other category
+    if(applymap('map_account_KOL_indication',account_id,null()) = 'RA','RA', // if segment against RA -> RA
+    if(wildmatch(call_detailed_products,'*Jyseleca(RA)*'),'RA', // wihtin call detail was RA listed
+    	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'RA*','Medical_Rheumatology'),'RA',
+	if(applymap('map_account_KOL_indication',account_id,null()) = 'UC','UC',
+        if(wildmatch(call_detailed_products,'*Jyseleca(UC)*'),'UC',
+        	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'UC*'),'UC',
+   				'Other')))))))) as call_indication_KAM,                
+
+     if(wildmatch(call_detailed_products,'*Jyseleca(RA)*'),'RA',
+    	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'RA*','Medical_Rheumatology'),'RA',
+        if(wildmatch(call_detailed_products,'*Jyseleca(UC)*'),'UC',
+        	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'UC*'),'UC',
+   				'Other')))) as call_indication,
+
 	ApplyMap('map_account_specialty',account_id,null()) as specialty_group,
     if(if(wildmatch(call_detailed_products,'*Jyseleca(RA)*'),'RA',
     	if(wildmatch(applymap('map_medical_discussion',call_id,null()),'RA*','Medical_Rheumatology'),'RA',
@@ -135,20 +195,52 @@ left join (temp_call_veeva)
 LOAD
     Id as call_id,
     Coaching_Visit__c as coaching_visit,
-    GLPG_Dual_Visit__c as dual_visit
+    GLPG_Dual_Visit__c as dual_visit  
 FROM [lib://Customer View/1.QVD/5.Migration/e_v_call2vod_addition.qvd]
 (qvd);
 
 ////////////////////////////////////////////////////////////////////////
 
-map_territory_id_country_id:
-Mapping
+/*
+CODE UPDATE
+2021-06-16
+Due to issue in brick to territory table, DE 301 and 302 are not showing the below is a temporary fix to load inline the missing territories to DE
+*/
+
+// map_territory_id_country_id:
+// Mapping
+// LOAD
+//     territory
+//     ,country_cd
+// FROM 
+// 	[$(vQVD_Transform_Path)/t_brick_to_territory_veeva.qvd](qvd)
+// ;
+
+temp_country_map:
 LOAD
     territory
     ,country_cd
 FROM 
 	[$(vQVD_Transform_Path)/t_brick_to_territory_veeva.qvd](qvd)
 ;
+
+// Manual addition of DE 301 and 302 as not present in brick to territory alignment table
+Concatenate (temp_country_map)
+Load * Inline [
+country_cd,	territory
+DE,	DE_CR_301
+DE,	DE_CR_302
+];
+
+map_territory_id_country_id:
+Mapping
+Load
+	*
+Resident
+temp_country_map;
+
+drop Table temp_country_map;
+
 
 map_account_id_recordtype_id:
 Mapping
@@ -202,7 +294,8 @@ LOAD
 //FROM [$(vQVD_Transform_Path)/t_account_veeva.qvd](qvd)
 Resident t_account_veeva
 Where
-	account_tier_kol <> 'None'
+KOL_target_indication <> 'None'
+//account_tier_kol <> 'None' - UPDATED FOR INDICATION SPLIT
 ;
 
 
@@ -210,6 +303,16 @@ map_msl_account_id_account_territory:
 Mapping
 Load
 	account_id&'|'&account_territory
+    ,1
+Resident
+	tmp_targeted_msl_accounts
+;
+
+
+map_msl_account_id_account_territory_2:
+Mapping
+Load
+	account_id
     ,1
 Resident
 	tmp_targeted_msl_accounts
@@ -228,10 +331,12 @@ FROM
 Inner Join(tmp_targeted_rep_accounts)
 LOAD
     account_id
+    ,Segment_target_indication
 //FROM 	[$(vQVD_Transform_Path)/t_account_veeva.qvd](qvd)
 Resident t_account_veeva
 Where
-	account_segment <> 'None'
+	Segment_target_indication <> 'None' 
+//	account_segment <> 'None' - UPDATED FOR INDICATION SPLIT
 ;
 
 map_rep_account_id_account_territory:
@@ -239,6 +344,15 @@ Mapping
 Load
 	account_id&'|'&account_territory
     ,1
+Resident
+	tmp_targeted_rep_accounts
+;
+
+map_rep_account_id_account_territory_indication:
+Mapping
+Load
+	account_id&'|'&account_territory
+    ,Segment_target_indication
 Resident
 	tmp_targeted_rep_accounts
 ;
@@ -253,6 +367,7 @@ Load
     ,If(ApplyMap('map_recordtype_is_persontype',account_recordtype_id,Null())='True' and call_status= 'Submitted',1)  as is_call
     ,If(ApplyMap('map_msl_account_id_account_territory',account_id&'|'&territory_id,Null())=1,1) as is_targeted_msl
     ,If(ApplyMap('map_rep_account_id_account_territory',account_id&'|'&territory_id,Null())=1,1) as is_targeted
+    ,ApplyMap('map_rep_account_id_account_territory_indication',account_id&'|'&territory_id,Null()) as target_indication    
     ,ApplyMap('map_territory_id_country_id',territory_id,Null()) as country_id
 ;
 Load

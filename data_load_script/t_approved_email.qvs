@@ -11,6 +11,7 @@ LOAD
     OwnerId,
 	ApplyMap('map_user_id_country',OwnerId,Null()) as Country,
     If(ApplyMap('map_rep_account_id_account_territory',Account_vod__c&'|'&Territory_vod__c,Null())=1,1) as is_targeted,
+    ApplyMap('map_rep_account_id_account_territory_indication',Account_vod__c&'|'&Territory_vod__c,Null()) as target_indication,      
 	Email_Sent_Date_vod__c,
 	Id as email_id,
 	Name,

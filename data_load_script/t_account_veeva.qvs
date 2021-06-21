@@ -74,59 +74,7 @@ Where
 	object_type = 'Account'
 ;
 
-//add exception for BNL, segemnts are based on product GLPG instead of Filgo like all other countries
-
-tmp_map_account_id_territory_level_2_bnl:
-NoConcatenate
-LOAD
-    account_id as acocunt_id_bnl
-    ,account_territory as territory_name
-FROM 
-	[$(vQVD_Transform_Path)/t_account_territory_veeva.qvd](qvd)
-    ;
-    
-Inner Join(tmp_map_account_id_territory_level_2_bnl)
-LOAD
-    territory_level_2
-    ,territory_name
-FROM 
-	[$(vQVD_Transform_Path)/t_territory_veeva.qvd](qvd)
-Where
-	territory_level_2 = 'BNL'
-;
-
-map_account_id_territory_level_2_bnl:
-Mapping
-Load
-	acocunt_id_bnl
-    ,1
-Resident
-	tmp_map_account_id_territory_level_2_bnl
-;
-
-Drop Table tmp_map_account_id_territory_level_2_bnl;
-
-
-
-// Jyseleca FR is now used across the board = no difference for BNL anymore - waiting on confirmation for update go ahead
-// Additionally a product ID, so we can show indication
-
-map_account_id_segment_bnl:
-Mapping
-Load
-	account_id
-    ,segment
-    // concatenate product name & segment
-FROM 
-	[$(vQVD_Extract_Path)/e_v_product_metrics.qvd](qvd)
-Where
-//	products_id = 'a004J000001epf6QAA'		//Product: GLPG
-    products_id = 'a004J000007hIgUQAU'		//Product: Jyseleca_RA
-//  match(products_id,'a004J000007hIgUQAU','a004J000008mcbpQAA') //Inclusion of Company
-
-// NL currently has UC tiers against "Company" need to add field for product to account table --- Check with Boris on timeline + UC
-
-;
+// HISTORIC MAPPING JUST FOR RA
 
 map_account_id_segment:
 Mapping
@@ -137,7 +85,31 @@ FROM
 	[$(vQVD_Extract_Path)/e_v_product_metrics.qvd](qvd)
 Where
     products_id = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
-    //products_id ='a004J000007gAUKQA2'		//Product: Filgo
+;
+
+map_account_id_segment_RA:
+Mapping
+Load
+	account_id
+    ,segment
+FROM 
+	[$(vQVD_Extract_Path)/e_v_product_metrics.qvd](qvd)
+Where
+    products_id = 'a004J000007hIgUQAU'		//Product: Jyseleca
+;
+
+// For UK market, the UC is listed against Filgotinib, all others have UC as GLPG
+
+map_account_id_segment_UC:
+Mapping
+Load
+	account_id
+    ,segment
+FROM 
+	[$(vQVD_Extract_Path)/e_v_product_metrics.qvd](qvd)
+Where
+    products_id = 'a004J000001epf6QAA'		//Product: GLPG
+    OR products_id = 'a004J00000AJr9qQAD'	//Product: Filgotinib
 ;
 
 
@@ -145,34 +117,82 @@ Where
 KOL Tier is missing from the AWS table - the temp API pulls the additional data and will need updating to the standard tables, once the missing fields are added 
 **************/
 
-        map_account_id_kol_tier_bnl:
-        Mapping
-        LOAD
-            Account_vod__c,
-            GLPG_KOL_Tiering__c
-        FROM 
-            [lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
-        Where
-            Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
-			// Products_vod__c = 'a004J000001epf6QAA'		//Product: GLPG
-        ;
+map_account_id_kol_tier:
+Mapping
+LOAD
+	Account_vod__c,
+	GLPG_KOL_Tiering__c
+FROM 
+[lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
+Where
+	Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
+;
 
-        map_account_id_kol_tier:
-        Mapping
-        LOAD
-            Account_vod__c,
-            GLPG_KOL_Tiering__c
-        FROM 
-            [lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
-        Where
-            Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
-        ;
+map_account_id_kol_tier_RA:
+Mapping
+LOAD
+    Account_vod__c,
+    GLPG_KOL_Tiering__c
+FROM 
+[lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
+Where
+	Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
+;
+
+map_account_id_kol_tier_UC:
+Mapping
+LOAD
+    Account_vod__c,
+    GLPG_KOL_Tiering__c
+FROM 
+[lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
+Where
+    Products_vod__c = 'a004J000001epf6QAA'		//Product: GLPG
+    OR Products_vod__c = 'a004J00000AJr9qQAD'	//Product: Filgotinib
+;
+
+Qualify *;
+ra_kol:
+NoConcatenate
+LOAD
+    Account_vod__c,
+    GLPG_KOL_Tiering__c
+FROM 
+[lib://Customer View/1.QVD/5.Migration/e_v_product_metric.qvd](qvd)
+Where
+	Products_vod__c = 'a004J000007hIgUQAU'		//Product: Jyseleca_FR
+;
+Unqualify *;
 
 /*
 CODE UPDATE
 Need to split out Opt in Pending from Opt Ins, and add as status
 Simon Watson - 2021-04-27
+2021-06-16 - updated to order by created date and to prioritise opt ins with no expiry
 */
+
+// tmp_multichannel_consent:
+// NoConcatenate
+// Load 
+// 	*
+//     ,If(WildMatch(opt_type,'Opt_In_vod') and Len(opt_expiration_date)=0,'Opt-In',
+//     	If(WildMatch(opt_type,'Opt_In_Pending_vod') ,'Pending','Opt-Out')) as hcp_consent_status
+// FROM 
+// 	[$(vQVD_Extract_Path)/e_v_multichannel_consent.qvd](qvd)
+// Where
+// 	Upper(is_deleted) ='FALSE' 
+// ;
+
+// tmp_2_multichannel_consent:
+// NoConcatenate
+// Load 
+// 	account_id
+//     ,lastvalue(hcp_consent_status) as hcp_consent_status
+// Resident
+// 	tmp_multichannel_consent
+// Group By
+// 	account_id
+// ;
 
 tmp_multichannel_consent:
 NoConcatenate
@@ -184,6 +204,9 @@ FROM
 	[$(vQVD_Extract_Path)/e_v_multichannel_consent.qvd](qvd)
 Where
 	Upper(is_deleted) ='FALSE' 
+and WildMatch(opt_type,'Opt_In_vod') or IsNull(opt_expiration_date)
+and IsNull(opt_expiration_date)
+
 ;
 
 tmp_2_multichannel_consent:
@@ -191,11 +214,14 @@ NoConcatenate
 Load 
 	account_id
     ,lastvalue(hcp_consent_status) as hcp_consent_status
+    ,lastvalue(opt_expiration_date) as opt_expiration_date
 Resident
 	tmp_multichannel_consent
 Group By
 	account_id
+order by     created_date
 ;
+
 
 map_account_id_consent:
 Mapping
@@ -214,25 +240,40 @@ CODE UPDATE
 2021.01.20 - Simon Watson
 1. Updated 'N/A' to 'None' as n/a could mislead end user   
 2. Additional applymap for KOL Tier from Product Metrics table
+3. updated to show segments for both UC and RA. Included the existing fields of undefined that are used in all dashboards
 ******************************************************************************/
 
 t_account_veeva:
 NoConcatenate
 Load
+	*,
+    if(account_segment_RA='None' and account_segment_UC = 'None','None',
+		if(account_segment_RA<>'None' and account_segment_UC <> 'None','Multiple',
+			if(account_segment_RA='None' and account_segment_UC <> 'None','UC',    
+				if(account_segment_RA<>'None' and account_segment_UC = 'None','RA'
+    )))) as Segment_target_indication,
+    if(account_tier_kol_RA='None' and account_tier_kol_UC = 'None','None',
+		if(account_tier_kol_RA<>'None' and account_tier_kol_UC <> 'None','Multiple',
+			if(account_tier_kol_RA='None' and account_tier_kol_UC <> 'None','UC',    
+				if(account_tier_kol_RA<>'None' and account_tier_kol_UC = 'None','RA'
+    )))) as KOL_target_indication,    
+;    
+Load
 	*
     ,ApplyMap('map_account_id_consent',account_id,'N/A') as hcp_consent_status
     ,ApplyMap('map_recordtype_account_type',recordtype_id,null()) as account_type
-	,If(Applymap('map_account_id_territory_level_2_bnl',account_id) = 1,
-    	If(Match(ApplyMap('map_account_id_segment_bnl',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment_bnl',account_id,Null()),'None'),
-        If(Match(ApplyMap('map_account_id_segment',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment',account_id,Null()),'None')) as account_segment        
-	,If(Applymap('map_account_id_territory_level_2_bnl',account_id) = 1,
-    	If(Match(ApplyMap('map_account_id_kol_tier_bnl',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier_bnl',account_id,Null()),'None'),
-        If(Match(ApplyMap('map_account_id_kol_tier',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier',account_id,Null()),'None')) as account_tier_kol        
     ,If(ApplyMap('map_recordtype_is_persontype',recordtype_id,Null())='False','HCO','HCP') as hcp_hco
     ,If(ApplyMap('map_recordtype_is_persontype',recordtype_id,Null())='True',account_formatted_name) as hcp_account
     ,If(ApplyMap('map_recordtype_is_persontype',recordtype_id,Null())='False',account_formatted_name) as hco_account
+	,If(Match(ApplyMap('map_account_id_segment',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment',account_id,Null()),'None') as account_segment
+ 	,If(Match(ApplyMap('map_account_id_segment_RA',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment_RA',account_id,Null()),'None') as account_segment_RA        
+ 	,If(Match(ApplyMap('map_account_id_segment_UC',account_id,Null()),'A','B','C','D'),ApplyMap('map_account_id_segment_UC',account_id,Null()),'None') as account_segment_UC 
+	,If(Match(ApplyMap('map_account_id_kol_tier',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier',account_id,Null()),'None') as account_tier_kol
+ 	,If(Match(ApplyMap('map_account_id_kol_tier_RA',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier_RA',account_id,Null()),'None') as account_tier_kol_RA
+ 	,If(Match(ApplyMap('map_account_id_kol_tier_UC',account_id,Null()),'Tier 1','Tier 2','Tier 3'),ApplyMap('map_account_id_kol_tier_UC',account_id,Null()),'None') as account_tier_kol_UC  
+   
 Resident
 	temp_account_veeva
 ;
 
-Drop Table temp_account_veeva;
+DROP TABLE temp_account_veeva;
